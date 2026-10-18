@@ -33,7 +33,7 @@ button.p{background:var(--ac);color:#fff;border:0;font-weight:700}
 <div style="display:flex;gap:8px"><input id="rc" maxlength="6" placeholder="Party code" style="flex:1;min-width:0;text-transform:uppercase"><button class="p" id="jb">Join</button></div>
 <div id="err" style="color:#e5484d;min-height:1.2em;font-size:14px"></div>
 <button id="sb">Play offline</button>
-<p>Desktop: A/D move, W or space jumps (twice), S drops, mouse aims, hold click to charge and release to shoot, right-click or F bashes, Q switches special arrows. Mobile: left thumb moves (flick up to jump, down to drop). Right thumb: hold and drag to aim and charge, let go to shoot, tap to bash. Tap the arrow list at the bottom to switch special arrows.</p>
+<p>Desktop: A/D move, W or space jumps, S drops, mouse aims, hold click to charge and release to shoot, right-click or F bashes, Q switches special arrows. Mobile: left thumb moves (flick up to jump, down to drop). Right thumb: hold and drag to aim and charge, let go to shoot, tap to bash. Tap the arrow list at the bottom to switch special arrows.</p>
 </div></div>
 <div id="set" hidden></div>
 <script>
@@ -51,7 +51,7 @@ const PN={ar:"+2 arrows",sp:"Speed boost",sh:"Shield",tr:"Triple shot",ex:"Explo
 let R=null,online=false,code="public",joinT=Date.now(),lastAct=0,lastSync=0,lastPu=0,lt=0,camx=300,camy=700,dpr=1,jr=0,ch=0,why="";
 const G={cfg:null,mode:"lms",map:0,round:0,t0:Date.now(),ph:"wait",msg:"",k:[0,0],overAt:0,seen:new Set()};
 const KINDS=Object.keys(PN),gen=()=>Array.from({length:4},()=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[Math.random()*31|0]).join(""),nv=(v,d,a,b)=>clamp(v===undefined||v===""||!isFinite(+v)?d:+v,a,b),sane=c=>({pw:(Array.isArray(c.pw)?c.pw:KINDS).filter(k=>PN[k]),ch:nv(c.ch,4,0,10),ci:nv(c.ci,7,3,20),lv:nv(c.lv,3,1,5)|0,ar:nv(c.ar,3,1,6)|0,kt:nv(c.kt,20,5,50)|0,st:c.st===0||c.st===false?0:1});G.cfg=sane({});
-const me={x:300,y:840,vx:0,vy:0,gr:0,jc:0,a:0,al:0,ar:3,tm:0,n:"Archer",lv:3,inv:0,ax:{ex:0,ho:0,ph:0,bn:0},iv:0,jp:0,rf:0,mg:0,bb:0,mode:"",rev:0,rs:0,st:0,cd:0,bc:0,sp:0,sh:0,tr:0,lb:null};
+const me={x:300,y:840,vx:0,vy:0,gr:0,jc:0,a:0,al:0,ar:3,tm:0,n:"Archer",lv:3,inv:0,gt:0,ax:{ex:0,ho:0,ph:0,bn:0},iv:0,jp:0,rf:0,mg:0,bb:0,mode:"",rev:0,rs:0,st:0,cd:0,bc:0,sp:0,sh:0,tr:0,lb:null};
 let arrows=[],ground=[],pu=[],fx=[],vis={},feed=[],pend=new Set(),taken=new Set(),shotN=0,mouse=null;
 const keys={},sticks={};
 
@@ -144,13 +144,13 @@ function spawn(){
 }
 const stormW=()=>{if(G.mode!=="lms"||G.ph!=="play"||!G.cfg.st)return 0;const t=(Date.now()-G.t0)/1000;return Math.max(120,800-Math.max(0,t-15)*8)};
 const chg=n=>ch?Math.min(1,(n-ch)/1000):0;
-function startCharge(){if(me.al&&G.ph!=="over"&&me.ar>0)ch=Date.now()}
+function startCharge(){if(me.al&&G.ph!=="over"&&(me.ar>0||Object.keys(me.ax).some(k=>me.ax[k]>0)))ch=Date.now()}
 function release(){if(!ch)return;const c=chg(Date.now());ch=0;shoot(me.rf>Date.now()?900:350+550*c)}
-function shoot(v){const n=Date.now();if(!me.al||G.ph==="over"||me.ar<=0||n<me.cd)return;me.ar--;me.cd=n+(me.rf>n?120:350);me.rev=n+900;const sp=me.ax[me.mode]>0?me.mode:Object.keys(me.ax).find(k=>me.ax[k]>0)||"";if(sp){me.ax[sp]--;me.mode=sp}
+function shoot(v){const n=Date.now();if(!me.al||G.ph==="over"||n<me.cd)return;const sp=me.ax[me.mode]>0?me.mode:(me.ar>0?"":Object.keys(me.ax).find(k=>me.ax[k]>0)||"");if(!sp&&me.ar<=0)return;if(sp){me.ax[sp]--;me.mode=sp}else me.ar--;me.cd=n+(me.rf>n?120:350);me.rev=n+900;
   (me.tr>n?[-.16,0,.16]:[0]).forEach((o,i)=>emit("shot",{id:mid()+"_"+(shotN++),x:Math.round(me.x+Math.cos(me.a)*20),y:Math.round(me.y-26+Math.sin(me.a)*20),a:Math.round((me.a+o)*1000)/1000,v:Math.round(v),m:o===0?sp:""}))}
 function bash(){const n=Date.now();if(!me.al||G.ph==="over"||n<me.bc)return;me.bc=n+600;me.rev=n+900;emit("bash",{x:Math.round(me.x),y:Math.round(me.y-20),dx:+Math.cos(me.a).toFixed(2),dy:+Math.sin(me.a).toFixed(2),p:me.bb>n?1:0})}
-function cycle(){const ks=Object.keys(me.ax).filter(k=>me.ax[k]>0);if(ks.length)me.mode=ks[(ks.indexOf(me.mode)+1)%ks.length]}
-function jump(){if(me.al&&me.jc<2){burst(me.x,me.y,"#d8e8c0",5);me.vy=me.jp>Date.now()?-860:-640;me.jc++;me.gr=0}}
+function cycle(){const ks=(me.ar>0?[""]:[]).concat(Object.keys(me.ax).filter(k=>me.ax[k]>0));if(ks.length>1)me.mode=ks[(ks.indexOf(me.mode)+1)%ks.length]}
+function jump(){const n=Date.now();if(me.al&&me.jc<1&&(me.gr||n-me.gt<130)){burst(me.x,me.y,"#d8e8c0",5);me.vy=me.jp>n?-1150:-905;me.jc=1;me.gr=0}}
 function die(a){me.al=0;ch=0;shk=8;burst(me.x,me.y-20,"#ff5a5a",24);if(G.mode==="lms")me.lv=Math.max(0,me.lv-1);me.rs=G.mode==="team"?Date.now()+3000:(me.lv>0?Date.now()+2000:0);let k=null,id;
   if(a){k=a.o;id=a.id}else{id="s"+mid()+Date.now();if(me.lb&&Date.now()-me.lb.t<5000)k=me.lb.p}
   emit("hit",{id,k})}
@@ -166,7 +166,7 @@ function frame(t){
   if(me.al){
     const tv=ix*(me.sp>now?400:260);me.vx+=(tv-me.vx)*Math.min(1,dt*(me.gr?14:6));
     me.vy=Math.min(1100,me.vy+1800*dt);me.x=clamp(me.x+me.vx*dt,10,W-10);const py=me.y;me.y+=me.vy*dt;me.gr=0;
-    if(me.vy>=0)for(const p of P)if(me.x>p.x-6&&me.x<p.x+p.w+6&&py<=p.y+2&&me.y>=p.y&&!(iy>.6&&!p.s)){if(me.vy>350)burst(me.x,p.y,"#d8e8c0",6);me.y=p.y;me.vy=0;me.gr=1;me.jc=0;break}
+    if(me.vy>=0)for(const p of P)if(me.x>p.x-6&&me.x<p.x+p.w+6&&py<=p.y+2&&me.y>=p.y&&!(iy>.6&&!p.s)){if(me.vy>350)burst(me.x,p.y,"#d8e8c0",6);me.y=p.y;me.vy=0;me.gr=1;me.jc=0;me.gt=Date.now();break}
     if(me.y>H+120)die(null);
   }
   const steps=Math.ceil(dt/.016)||1,h=dt/steps;
@@ -298,8 +298,8 @@ function draw(sc,now){
     for(let i=0;i<Math.max(G.cfg.lv,me.lv);i++)heart(26+i*30,top-8,11,i<me.lv?"#ff4d6d":"rgba(255,255,255,.25)")}
   let y=top+30;feed=feed.filter(f=>f.e>performance.now());cx.textAlign="left";feed.forEach(f=>{sh(f.t,10,y,14);y+=18});cx.textAlign="center";
   for(let i=0;i<6;i++)arrow(w/2+(i-2.5)*30,h-34,-1.2,24,i<me.ar?"#ffd54a":"#ffffff40");
-  const sc2=u=>Math.ceil((u-now)/1000)+"s",ef=[me.sp>now?"Speed "+sc2(me.sp):"",me.sh>now?"Shield":"",me.tr>now?"Triple "+sc2(me.tr):"",me.jp>now?"Super jump "+sc2(me.jp):"",me.rf>now?"Rapid fire "+sc2(me.rf):"",me.mg>now?"Magnet "+sc2(me.mg):"",me.bb>now?"Mega bash "+sc2(me.bb):"",me.iv>now?"Invisible "+sc2(me.iv):""].filter(Boolean).join("   "),ks=Object.keys(me.ax).filter(k=>me.ax[k]>0),sel=me.ax[me.mode]>0?me.mode:ks[0];
-  if(ks.length)pill(ks.map(k=>(k===sel?"➤ ":"")+PN[k]+" x"+me.ax[k]).join("   ")+(ks.length>1?"   (Q or tap here to switch)":""),w/2,h-96,15,"#ffd9a0");
+  const sc2=u=>Math.ceil((u-now)/1000)+"s",ef=[me.sp>now?"Speed "+sc2(me.sp):"",me.sh>now?"Shield":"",me.tr>now?"Triple "+sc2(me.tr):"",me.jp>now?"Super jump "+sc2(me.jp):"",me.rf>now?"Rapid fire "+sc2(me.rf):"",me.mg>now?"Magnet "+sc2(me.mg):"",me.bb>now?"Mega bash "+sc2(me.bb):"",me.iv>now?"Invisible "+sc2(me.iv):""].filter(Boolean).join("   "),ks=Object.keys(me.ax).filter(k=>me.ax[k]>0),sel=me.ax[me.mode]>0?me.mode:(me.ar>0?"":ks[0]),its=(me.ar>0?[""]:[]).concat(ks);
+  if(ks.length)pill(its.map(k=>(k===sel?"➤ ":"")+(k?PN[k]+" x"+me.ax[k]:"Normal x"+me.ar)).join("   ")+(its.length>1?"   (Q or tap here to switch)":""),w/2,h-96,15,"#ffd9a0");
   if(ef)pill(ef,w/2,h-64,15,"#ffe08a");
   let msg="";if(G.ph==="wait")msg="Waiting for players…  Party code: "+code;else if(G.ph==="over")msg=G.msg;
   else if(!me.al)msg=(G.mode==="team"||me.lv>0)?"Respawning…":"You’re out. Spectating until the next round.";
