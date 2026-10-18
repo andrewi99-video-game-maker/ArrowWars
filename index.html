@@ -19,19 +19,23 @@ input,select,button{font:inherit;font-size:16px;padding:10px;border-radius:8px;b
 button.p{background:var(--ac);color:#fff;border:0;font-weight:700}
 #top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 6px);right:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:96vw;font-size:13px;color:#fff;text-shadow:0 1px 3px #000}
 #top button{font-size:13px;padding:6px 10px;background:#000a;color:#fff;border:1px solid #fff4}
+#set{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(8,10,28,.6)}#set .card{touch-action:pan-y}.card label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:15px}.card input[type=number]{width:72px}.card input[type=checkbox]{width:20px;height:20px;padding:0}
 </style></head><body>
 <canvas id="cv"></canvas>
-<div id="top" hidden><span id="st"></span><button id="mb"></button><button id="mpb"></button></div>
+<div id="top" hidden><span id="st"></span><button id="mb">Settings</button></div>
 <div id="menu"><div class="card">
 <h1>Arrow Brawl</h1>
-<p>A platform fighter. Shoot arrows, bash rivals off the ledges, and open treasure chests for explosive, homing, phasing and other power-ups. In last man standing everyone gets 3 lives. Everyone in the same room code plays together.</p>
+<p>Platform archery brawl. Host a party and share the code, or join a friend’s party. The party leader controls the map, power-ups, chests and more.</p>
 <input id="nm" maxlength="12" placeholder="Your name">
-<input id="rc" maxlength="20" placeholder="Room code (default: public)">
-<select id="md"><option value="lms">Last man standing, with a closing storm</option><option value="team">Teams, first to 20 kills</option></select>
+<select id="md"><option value="lms">Last man standing (storm, lives)</option><option value="team">Teams, first to kills</option></select>
 <select id="mp"></select>
-<button class="p" id="go">Play</button>
-<p>Desktop: A/D move, W or space jumps (twice), S drops through, mouse aims, hold click to charge a shot and release to fire, right-click or F bashes. Mobile: left thumb moves, flick up to jump, down to drop. Right thumb: hold and drag to aim and charge, let go to shoot; a quick tap bashes.</p>
+<button class="p" id="hb">Host a game</button>
+<div style="display:flex;gap:8px"><input id="rc" maxlength="6" placeholder="Party code" style="flex:1;min-width:0;text-transform:uppercase"><button class="p" id="jb">Join</button></div>
+<div id="err" style="color:#e5484d;min-height:1.2em;font-size:14px"></div>
+<button id="sb">Play offline</button>
+<p>Desktop: A/D move, W or space jumps (twice), S drops, mouse aims, hold click to charge and release to shoot, right-click or F bashes, Q switches special arrows. Mobile: left thumb moves (flick up to jump, down to drop). Right thumb: hold and drag to aim and charge, let go to shoot, tap to bash. Tap the arrow list at the bottom to switch special arrows.</p>
 </div></div>
+<div id="set" hidden></div>
 <script>
 const $=id=>document.getElementById(id),cv=$("cv"),cx=cv.getContext("2d");
 const W=1600,H=900,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -43,10 +47,11 @@ const MAPS=[
 {name:"Desert Ruins",p:[fl(0,480),fl(620,360),fl(1120,480),pt(200,700,200),pt(700,690,200),pt(1200,700,200),pt(440,560,200),pt(960,560,200),pt(80,540,160),pt(1360,540,160),pt(700,420,200),pt(300,410,160),pt(1140,410,160),pt(560,290,180),pt(860,290,180)],sky:["#3a1a50","#c0507a","#ffb070"],mt:["#8a3a6a","#6a2a5a","#4a1a4a"],gr:["#e0b070","#f6d090","#c08850"],rk:["#a0683c","#3c2418"],de:"cactus",gl:"255,150,60",bd:"sun",cl:.1}];
 let T=MAPS[0],P=T.p;const setMap=i=>{G.map=i;T=MAPS[i];P=T.p};
 MAPS.forEach((m,i)=>$("mp").add(new Option(m.name,i)));$("mp").onchange=()=>setMap(+$("mp").value);
-const PN={ar:"+2 arrows",sp:"Speed boost",sh:"Shield",tr:"Triple shot",ex:"Explosive arrows",ho:"Homing arrows",ph:"Phase arrows",iv:"Invisibility"},PC={ar:"#7ee787",sp:"#ffd54a",sh:"#6fd3ff",tr:"#ff8fd0",ex:"#ff7a3d",ho:"#ff5ec8",ph:"#b48cff",iv:"#cfd8e3"};
+const PN={ar:"+2 arrows",sp:"Speed boost",sh:"Shield",tr:"Triple shot",ex:"Explosive arrows",ho:"Homing arrows",ph:"Phase arrows",bn:"Bouncing arrows",iv:"Invisibility",lv:"Extra life",jp:"Super jump",rf:"Rapid fire",mg:"Arrow magnet",bb:"Mega bash"},PC={ar:"#7ee787",sp:"#ffd54a",sh:"#6fd3ff",tr:"#ff8fd0",ex:"#ff7a3d",ho:"#ff5ec8",ph:"#b48cff",bn:"#7ee787",iv:"#cfd8e3",lv:"#ff4d6d",jp:"#8fe0ff",rf:"#ffe14a",mg:"#c58bff",bb:"#ffa04a"};
 let R=null,online=false,code="public",joinT=Date.now(),lastAct=0,lastSync=0,lastPu=0,lt=0,camx=300,camy=700,dpr=1,jr=0,ch=0,why="";
-const G={mode:"lms",map:0,round:0,t0:Date.now(),ph:"wait",msg:"",k:[0,0],overAt:0,seen:new Set()};
-const me={x:300,y:840,vx:0,vy:0,gr:0,jc:0,a:0,al:0,ar:3,tm:0,n:"Archer",lv:3,inv:0,mc:0,iv:0,mode:"",rev:0,rs:0,st:0,cd:0,bc:0,sp:0,sh:0,tr:0,lb:null};
+const G={cfg:null,mode:"lms",map:0,round:0,t0:Date.now(),ph:"wait",msg:"",k:[0,0],overAt:0,seen:new Set()};
+const KINDS=Object.keys(PN),gen=()=>Array.from({length:4},()=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789"[Math.random()*31|0]).join(""),nv=(v,d,a,b)=>clamp(v===undefined||v===""||!isFinite(+v)?d:+v,a,b),sane=c=>({pw:(Array.isArray(c.pw)?c.pw:KINDS).filter(k=>PN[k]),ch:nv(c.ch,4,0,10),ci:nv(c.ci,7,3,20),lv:nv(c.lv,3,1,5)|0,ar:nv(c.ar,3,1,6)|0,kt:nv(c.kt,20,5,50)|0,st:c.st===0||c.st===false?0:1});G.cfg=sane({});
+const me={x:300,y:840,vx:0,vy:0,gr:0,jc:0,a:0,al:0,ar:3,tm:0,n:"Archer",lv:3,inv:0,ax:{ex:0,ho:0,ph:0,bn:0},iv:0,jp:0,rf:0,mg:0,bb:0,mode:"",rev:0,rs:0,st:0,cd:0,bc:0,sp:0,sh:0,tr:0,lb:null};
 let arrows=[],ground=[],pu=[],fx=[],vis={},feed=[],pend=new Set(),taken=new Set(),shotN=0,mouse=null;
 const keys={},sticks={};
 
@@ -61,20 +66,20 @@ const Net={role:"solo",id:"me",h:{},mine:{},snap:{},pr:{},conns:{},up:null,peer:
  fromClient(id,m){if(!m||typeof m!=="object")return;if(m.k==="ev"&&/^[a-z]{1,12}$/.test(m.t)&&m.d&&typeof m.d==="object")this.relay(m.t,m.d,id);else if(m.k==="pr"&&m.p&&typeof m.p==="object"&&JSON.stringify(m.p).length<600)this.pr[id]=m.p},
  fromHost(m){if(!m||typeof m!=="object")return;if(m.k==="ev")this.deliver(m.t,m.d,m.f);else if(m.k==="st"&&m.s&&typeof m.s==="object")this.snap=m.s}};
 setInterval(()=>Net.tick(),66);
-function connect(){return new Promise(resolve=>{
+function connect(kind){return new Promise(resolve=>{
   if(!window.Peer){why="PeerJS did not load";return resolve(false)}
   const hid="abrawl-"+code;let tries=0,done=0;const fin=ok=>{if(!done){done=1;resolve(ok)}};
   const asHost=()=>{if(++tries>6)return fin(false);const p=new Peer(hid);
     p.on("open",id=>{Net.role="host";Net.id=id;Net.conns={};Net.pr={};Net.snap={};Net.up=null;Net.peer=p;fin(true)});
     p.on("connection",c=>{c.on("open",()=>{Net.conns[c.peer]=c});c.on("data",m=>Net.fromClient(c.peer,m));c.on("close",()=>{delete Net.conns[c.peer];delete Net.pr[c.peer]});c.on("error",()=>{})});
-    p.on("error",e=>{if(Net.role!=="host"){try{p.destroy()}catch(_){}if(e.type==="unavailable-id")asClient();else{why=e.type;fin(false)}}})};
+    p.on("error",e=>{if(Net.role!=="host"){try{p.destroy()}catch(_){}if(e.type==="unavailable-id"&&kind!=="host")asClient();else{why=e.type;fin(false)}}})};
   const asClient=()=>{if(++tries>6)return fin(false);const p=new Peer();
     p.on("open",id=>{const c=p.connect(hid,{reliable:true});
       c.on("open",()=>{Net.role="client";Net.id=id;Net.up=c;Net.peer=p;Net.snap={};fin(true)});
       c.on("data",m=>Net.fromHost(m));c.on("close",()=>{if(Net.up===c)rejoin()});c.on("error",()=>{})});
-    p.on("error",e=>{if(Net.role!=="client"){try{p.destroy()}catch(_){}if(e.type==="peer-unavailable")asHost();else{why=e.type;fin(false)}}})};
-  setTimeout(()=>{if(!done){why="timed out";fin(false)}},12000);asHost()})}
-async function rejoin(){Net.role="joining";Net.snap={};Net.up=null;await new Promise(r=>setTimeout(r,500+Math.random()*1500));try{Net.peer&&Net.peer.destroy()}catch(e){}if(!(await connect()))setTimeout(rejoin,3000)}
+    p.on("error",e=>{if(Net.role!=="client"){try{p.destroy()}catch(_){}if(e.type==="peer-unavailable"&&kind!=="join")asHost();else{why=e.type;fin(false)}}})};
+  setTimeout(()=>{if(!done){why="timed out";fin(false)}},12000);kind==="join"?asClient():asHost()})}
+async function rejoin(){Net.role="joining";Net.snap={};Net.up=null;await new Promise(r=>setTimeout(r,500+Math.random()*1500));try{Net.peer&&Net.peer.destroy()}catch(e){}if(!(await connect("any")))setTimeout(rejoin,3000)}
 const mid=()=>(R.peers().find(p=>p.sameTab)||{}).peer||"me";
 const peers=()=>R.peers().filter(p=>p.presence&&p.presence.n);
 const pf=id=>peers().find(p=>p.peer===id);
@@ -85,14 +90,17 @@ const pres=p=>{try{R.presence(p)}catch(e){}};
 const hue=s=>Math.abs([...String(s)].reduce((h,c)=>(h*31+c.charCodeAt(0))|0,7))%360;
 const note=t=>feed.push({t,e:performance.now()+3500});
 
-async function start(){
+async function start(kind){
   me.n=($("nm").value.trim()||"Archer").slice(0,12);
-  code=($("rc").value.toLowerCase().replace(/[^a-z0-9]/g,"")||"public").slice(0,20);
-  G.mode=$("md").value;setMap(+$("mp").value||0);$("menu").hidden=true;$("top").hidden=false;
-  why="";const ok=await connect();if(!ok&&!why)why="could not connect";R=Net;
+
+  G.mode=$("md").value;setMap(+$("mp").value||0);$("err").textContent="";
+  let ok=false;why="";if(kind==="solo")code="SOLO";
+  else if(kind==="join"){code=$("rc").value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6);if(code.length<3){$("err").textContent="Enter the party code first";return}$("err").textContent="Connecting…";ok=await connect("join");if(!ok){$("err").textContent=why==="peer-unavailable"?"No game found with that code":"Couldn’t connect ("+why+")";return}}
+  else{for(let i=0;i<4&&!ok;i++){code=gen();$("err").textContent="Creating party…";ok=await connect("host");if(!ok&&why!=="unavailable-id")break}if(!ok){$("err").textContent="Couldn’t create a party ("+why+")";return}}
+  $("menu").hidden=true;$("top").hidden=false;R=Net;
   online=ok;joinT=Date.now();spawn();
   pres({n:me.n,j:joinT,al:0,ar:3,tm:0,x:300,y:840,a:0,r:0,sh:0});
-  R.on("shot",m=>{const d=m.data||{};if(!isFinite(d.x+d.y+d.a)||arrows.length>200)return;{const v=clamp(+d.v||800,300,1000);arrows.push({id:String(d.id).slice(0,40),x:d.x,y:d.y,vx:Math.cos(d.a)*v,vy:Math.sin(d.a)*v,o:m.peer,t:0,md:["ex","ho","ph"].includes(d.m)?d.m:""})}});
+  R.on("shot",m=>{const d=m.data||{};if(!isFinite(d.x+d.y+d.a)||arrows.length>200)return;{const v=clamp(+d.v||800,300,1000);arrows.push({id:String(d.id).slice(0,40),x:d.x,y:d.y,vx:Math.cos(d.a)*v,vy:Math.sin(d.a)*v,o:m.peer,t:0,md:["ex","ho","ph","bn"].includes(d.m)?d.m:""})}});
   R.on("hit",m=>{const d=m.data||{},id=String(d.id);if(G.seen.has(id))return;G.seen.add(id);
     const i=arrows.findIndex(a=>a.id===id);if(i>=0){const A=arrows[i];if(A.md==="ex")boom(A);else ground.push({id,x:A.x,y:A.y,vy:0,rest:0});arrows.splice(i,1)}
     const k=d.k?pf(d.k):null,v=pf(m.peer);if(!d.b&&v&&!v.isMe){const vv=vis[v.peer];if(vv)burst(vv.x,vv.y-20,"#ff5a5a",24)}
@@ -104,27 +112,27 @@ async function start(){
     if(pi>=0){const u=pu[pi],k=u.k;pu.splice(pi,1);opens.push({x:u.x,y:u.y,e:performance.now()+800});burst(u.x,u.y,"#ffd54a",20);if(m.isMe){apply(k);pend.delete(id)}return}
     const i=ground.findIndex(g=>g.id===id);if(i>=0)ground.splice(i,1);
     if(m.isMe){me.ar=Math.min(6,me.ar+1);pend.delete(id)}});
-  R.on("pu",m=>{const d=m.data||{};if(!isFinite(d.x+d.y)||!PN[d.k]||pu.length>8)return;pu.push({id:String(d.id).slice(0,30),x:d.x,y:d.y,k:d.k})});
-  R.on("bash",m=>{const d=m.data||{};if(!isFinite(d.x+d.y+d.dx+d.dy))return;const bx=d.x+d.dx*32,by=d.y+d.dy*32;fx.push({x:bx,y:by,e:performance.now()+200});
+  R.on("pu",m=>{const d=m.data||{};if(!isFinite(d.x+d.y)||!PN[d.k]||pu.length>12)return;pu.push({id:String(d.id).slice(0,30),x:d.x,y:d.y,k:d.k})});
+  R.on("bash",m=>{const d=m.data||{};if(!isFinite(d.x+d.y+d.dx+d.dy))return;const bx=d.x+d.dx*32,by=d.y+d.dy*32;fx.push({x:bx,y:by,e:performance.now()+200,r:d.p?70:0});
     if(m.isMe||!me.al||G.ph==="over")return;
-    if(Math.hypot(me.x-bx,me.y-20-by)<50){me.vx=d.dx*900;me.vy=-320+Math.min(0,d.dy*300);me.gr=0;me.lb={p:m.peer,t:Date.now()}}});
-  R.on("setmode",m=>{const d=m.data||{},x=d.m;if(isHost()&&(x==="lms"||x==="team")){G.mode=x;if(d.map>=0&&d.map<MAPS.length)setMap(d.map|0);startRound()}});
+    if(Math.hypot(me.x-bx,me.y-20-by)<(d.p?72:50)){const q=d.p?1.8:1;me.vx=d.dx*900*q;me.vy=(-320+Math.min(0,d.dy*300))*q;me.gr=0;me.lb={p:m.peer,t:Date.now()}}});
+  R.on("setmode",m=>{const d=m.data||{},x=d.m;if(m.isMe&&isHost()&&(x==="lms"||x==="team")){G.mode=x;if(d.cfg&&typeof d.cfg==="object")G.cfg=sane(d.cfg);if(d.map>=0&&d.map<MAPS.length)setMap(d.map|0);startRound()}});
   R.on("end",m=>{if(G.ph==="play"){G.ph="over";G.msg=String((m.data&&m.data.m)||"Round over").slice(0,60);G.overAt=Date.now()}});
   R.on("sync",m=>{if(m.isMe||!isHost())adopt(m.data||{})});
   setInterval(()=>pres({x:Math.round(me.x),y:Math.round(me.y),a:Math.round(me.a*100)/100,al:me.al,ar:me.ar,tm:me.tm,n:me.n,r:G.round,j:joinT,sh:me.sh>Date.now()?1:0,lv:me.lv,iv:me.iv>Date.now()&&me.rev<Date.now()?1:0}),70);
-  setInterval(()=>{$("st").textContent=Net.role==="host"||Net.role==="client"?"Room "+code+", "+peers().length+" online":Net.role==="joining"?"Reconnecting…":"Offline practice, "+why;$("mb").textContent=G.mode==="lms"?"Mode: last man standing":"Mode: teams to 20";$("mpb").textContent="Map: "+MAPS[G.map].name},500);
+  setInterval(()=>{$("st").textContent=Net.role==="host"||Net.role==="client"?(isHost()?"👑 ":"")+"Party "+code+" · "+peers().length+" online (tap to copy)":Net.role==="joining"?"Reconnecting…":"Offline practice"},500);
 
 }
-function apply(k){const n=Date.now();if(k==="ar")me.ar=Math.min(6,me.ar+2);if(k==="sp")me.sp=n+8000;if(k==="sh")me.sh=n+12000;if(k==="tr")me.tr=n+5000;if(k==="iv")me.iv=n+10000;if(k==="ex"||k==="ho"||k==="ph"){me.mc=(me.mode===k?me.mc:0)+2;me.mode=k}note("Power-up: "+PN[k]);burst(me.x,me.y-20,PC[k],16)}
-function sendSync(id,ph){lastAct=Date.now();emit("sync",{id,mode:G.mode,map:G.map,age:id===G.round?Date.now()-G.t0:0,ph,k:id===G.round?G.k:[0,0]})}
+function apply(k){const n=Date.now();if(k==="ar")me.ar=Math.min(6,me.ar+2);if(k==="sp")me.sp=n+8000;if(k==="sh")me.sh=n+12000;if(k==="tr")me.tr=n+5000;if(k==="iv")me.iv=n+10000;if(k in me.ax){me.ax[k]+=2;me.mode=k}if(k==="lv"){if(G.mode==="lms")me.lv=Math.min(5,me.lv+1);else me.sh=n+10000}if(k==="jp")me.jp=n+12000;if(k==="rf")me.rf=n+8000;if(k==="mg")me.mg=n+10000;if(k==="bb")me.bb=n+10000;note("Power-up: "+PN[k]);burst(me.x,me.y-20,PC[k],16)}
+function sendSync(id,ph){lastAct=Date.now();emit("sync",{id,mode:G.mode,map:G.map,cfg:G.cfg,age:id===G.round?Date.now()-G.t0:0,ph,k:id===G.round?G.k:[0,0]})}
 function startRound(){const ok=G.mode==="team"||peers().length>=2;sendSync(Date.now(),ok?"play":"wait")}
 function adopt(d){
-  G.mode=d.mode==="team"?"team":"lms";{const mp=clamp(+d.map|0,0,MAPS.length-1);if(mp!==G.map)setMap(mp)}G.ph=["play","over"].includes(d.ph)?d.ph:"wait";
+  G.mode=d.mode==="team"?"team":"lms";{const mp=clamp(+d.map|0,0,MAPS.length-1);if(mp!==G.map)setMap(mp)}if(d.cfg&&typeof d.cfg==="object")G.cfg=sane(d.cfg);G.ph=["play","over"].includes(d.ph)?d.ph:"wait";
   const k=Array.isArray(d.k)?d.k:[0,0];G.k=[+k[0]||0,+k[1]||0];G.t0=Date.now()-(+d.age||0);
   if(d.id!==G.round){G.round=d.id;arrows=[];ground=[];pu=[];G.seen.clear();taken.clear();pend.clear();newRound(+d.age||0)}
 }
 function newRound(age){
-  me.sp=me.sh=me.tr=me.mc=me.iv=0;me.lv=3;
+  me.sp=me.sh=me.tr=0;me.ax={ex:0,ho:0,ph:0,bn:0};me.iv=me.jp=me.rf=me.mg=me.bb=0;me.lv=G.cfg.lv;
   if(G.mode==="team"){const ids=order().map(p=>p.peer),i=ids.indexOf(mid());
     if(age<2000&&i>=0)me.tm=i%2;else{const c=[0,0];peers().forEach(p=>{if(!p.isMe&&(p.presence.tm===0||p.presence.tm===1))c[p.presence.tm]++});me.tm=c[0]>c[1]?1:c[1]>c[0]?0:Math.random()<.5?0:1}}
   if(G.ph==="over"||(G.mode==="lms"&&G.ph==="play"&&age>3000)){me.al=0;me.ar=3;me.lv=0}else spawn();
@@ -132,16 +140,17 @@ function newRound(age){
 function spawn(){
   let c=P;if(G.mode==="team")c=P.filter(p=>me.tm?p.x+p.w/2>800:p.x+p.w/2<800);const s0=stormW();if(s0){const d=c.filter(p=>Math.abs(p.x+p.w/2-800)<s0-60);if(d.length)c=d}
   const p=c[(Math.random()*c.length)|0];
-  me.x=p.x+20+Math.random()*(p.w-40);me.y=p.y-1;me.inv=Date.now()+1800;burst(me.x,me.y-20,"#fff",10);me.vx=me.vy=0;me.al=1;me.ar=3;me.st=0;me.rs=0;me.jc=0;me.lb=null;me.sp=me.sh=me.tr=me.mc=me.iv=0;
+  me.x=p.x+20+Math.random()*(p.w-40);me.y=p.y-1;me.inv=Date.now()+1800;burst(me.x,me.y-20,"#fff",10);me.vx=me.vy=0;me.al=1;me.ar=G.cfg.ar;me.st=0;me.rs=0;me.jc=0;me.lb=null;me.sp=me.sh=me.tr=0;me.ax={ex:0,ho:0,ph:0,bn:0};me.iv=me.jp=me.rf=me.mg=me.bb=0;
 }
-const stormW=()=>{if(G.mode!=="lms"||G.ph!=="play")return 0;const t=(Date.now()-G.t0)/1000;return Math.max(120,800-Math.max(0,t-15)*8)};
+const stormW=()=>{if(G.mode!=="lms"||G.ph!=="play"||!G.cfg.st)return 0;const t=(Date.now()-G.t0)/1000;return Math.max(120,800-Math.max(0,t-15)*8)};
 const chg=n=>ch?Math.min(1,(n-ch)/1000):0;
 function startCharge(){if(me.al&&G.ph!=="over"&&me.ar>0)ch=Date.now()}
-function release(){if(!ch)return;const c=chg(Date.now());ch=0;shoot(350+550*c)}
-function shoot(v){const n=Date.now();if(!me.al||G.ph==="over"||me.ar<=0||n<me.cd)return;me.ar--;me.cd=n+350;me.rev=n+900;const sp=me.mc>0?me.mode:"";if(sp)me.mc--;
+function release(){if(!ch)return;const c=chg(Date.now());ch=0;shoot(me.rf>Date.now()?900:350+550*c)}
+function shoot(v){const n=Date.now();if(!me.al||G.ph==="over"||me.ar<=0||n<me.cd)return;me.ar--;me.cd=n+(me.rf>n?120:350);me.rev=n+900;const sp=me.ax[me.mode]>0?me.mode:Object.keys(me.ax).find(k=>me.ax[k]>0)||"";if(sp){me.ax[sp]--;me.mode=sp}
   (me.tr>n?[-.16,0,.16]:[0]).forEach((o,i)=>emit("shot",{id:mid()+"_"+(shotN++),x:Math.round(me.x+Math.cos(me.a)*20),y:Math.round(me.y-26+Math.sin(me.a)*20),a:Math.round((me.a+o)*1000)/1000,v:Math.round(v),m:o===0?sp:""}))}
-function bash(){const n=Date.now();if(!me.al||G.ph==="over"||n<me.bc)return;me.bc=n+600;me.rev=n+900;emit("bash",{x:Math.round(me.x),y:Math.round(me.y-20),dx:+Math.cos(me.a).toFixed(2),dy:+Math.sin(me.a).toFixed(2)})}
-function jump(){if(me.al&&me.jc<2){burst(me.x,me.y,"#d8e8c0",5);me.vy=-640;me.jc++;me.gr=0}}
+function bash(){const n=Date.now();if(!me.al||G.ph==="over"||n<me.bc)return;me.bc=n+600;me.rev=n+900;emit("bash",{x:Math.round(me.x),y:Math.round(me.y-20),dx:+Math.cos(me.a).toFixed(2),dy:+Math.sin(me.a).toFixed(2),p:me.bb>n?1:0})}
+function cycle(){const ks=Object.keys(me.ax).filter(k=>me.ax[k]>0);if(ks.length)me.mode=ks[(ks.indexOf(me.mode)+1)%ks.length]}
+function jump(){if(me.al&&me.jc<2){burst(me.x,me.y,"#d8e8c0",5);me.vy=me.jp>Date.now()?-860:-640;me.jc++;me.gr=0}}
 function die(a){me.al=0;ch=0;shk=8;burst(me.x,me.y-20,"#ff5a5a",24);if(G.mode==="lms")me.lv=Math.max(0,me.lv-1);me.rs=G.mode==="team"?Date.now()+3000:(me.lv>0?Date.now()+2000:0);let k=null,id;
   if(a){k=a.o;id=a.id}else{id="s"+mid()+Date.now();if(me.lb&&Date.now()-me.lb.t<5000)k=me.lb.p}
   emit("hit",{id,k})}
@@ -164,14 +173,15 @@ function frame(t){
   for(let i=arrows.length-1;i>=0;i--){const a=arrows[i];let rm=0;a.t+=dt;
     for(let s=0;s<steps&&!rm;s++){a.vy+=(a.md==="ho"?120:350)*h;if(a.md==="ho")steer(a,h);a.x+=a.vx*h;a.y+=a.vy*h;
       if(a.x<0||a.x>W){a.x=clamp(a.x,0,W);a.vx=0}
-      if(!(a.md==="ph"&&a.t<1.6))for(const p of P)if(a.x>p.x&&a.x<p.x+p.w&&a.y>p.y&&a.y<p.y+(p.t||16)){if(a.md==="ex")boom(a);else ground.push({id:a.id,x:a.x,y:p.y-3,vy:0,rest:1});rm=1;break}
+      if(!(a.md==="ph"&&a.t<1.6))for(const p of P)if(a.x>p.x&&a.x<p.x+p.w&&a.y>p.y&&a.y<p.y+(p.t||16)){if(a.md==="bn"&&(a.b=(a.b||0)+1)<=3){a.vy=-Math.abs(a.vy)*.8;a.vx*=.92;a.y=p.y-3;burst(a.x,p.y,"#7ee787",4);break}if(a.md==="ex")boom(a);else ground.push({id:a.id,x:a.x,y:p.y-3,vy:0,rest:1});rm=1;break}
       if(!rm&&(a.y>H+150||a.t>5)){rm=1}
-      if(!rm&&!a.h&&me.al&&me.inv<now&&G.ph!=="over"&&a.o!==mid()&&Math.abs(a.x-me.x)<15&&a.y>me.y-42&&a.y<me.y+2){a.h=1;if(me.sh>now){me.sh=0;emit("hit",{id:a.id,k:a.o,b:1})}else die(a)}}
+      if(!rm&&!a.h&&me.al&&me.inv<now&&G.ph!=="over"&&(a.o!==mid()||a.t>.3)&&Math.abs(a.x-me.x)<15&&a.y>me.y-42&&a.y<me.y+2){a.h=1;if(me.sh>now){me.sh=0;emit("hit",{id:a.id,k:a.o,b:1})}else die(a)}}
     if(rm)arrows.splice(i,1)}
   for(let i=ground.length-1;i>=0;i--){const g=ground[i];if(!g.rest){const py=g.y;g.vy+=1200*dt;g.y+=g.vy*dt;
     for(const p of P)if(g.x>p.x&&g.x<p.x+p.w&&py<=p.y&&g.y>=p.y-3){g.y=p.y-3;g.rest=1;break}
     if(g.y>H+100)ground.splice(i,1)}}
   while(ground.length>60)ground.shift();
+  if(me.al&&me.mg>now)for(const g of ground){const dx=me.x-g.x,dy=me.y-20-g.y,d=Math.hypot(dx,dy);if(d<280&&d>6){g.x+=dx/d*260*dt;g.y+=dy/d*260*dt;g.rest=1;g.vy=0}}
   if(me.al){const cxm=me.x,cym=me.y-20;
     if(me.ar<6)for(const g of ground)if(!pend.has(g.id)&&Math.hypot(g.x-cxm,g.y-cym)<32){pend.add(g.id);setTimeout(()=>pend.delete(g.id),1500);emit("pick",{id:g.id})}
     for(const u of pu)if(!pend.has(u.id)&&Math.hypot(u.x-cxm,u.y-cym)<34){pend.add(u.id);setTimeout(()=>pend.delete(u.id),1500);emit("pick",{id:u.id})}}
@@ -181,12 +191,12 @@ function frame(t){
   if(isHost()&&now-joinT>2500&&now-lastAct>800){
     if(G.ph==="wait"&&(G.mode==="team"||peers().length>=2))startRound();
     else if(G.ph==="play"){
-      if(G.mode==="team"){if(G.k[0]>=20||G.k[1]>=20){lastAct=now;emit("end",{m:(G.k[0]>=20?"Red":"Blue")+" team wins!"})}}
+      if(G.mode==="team"){if(G.k[0]>=G.cfg.kt||G.k[1]>=G.cfg.kt){lastAct=now;emit("end",{m:(G.k[0]>=G.cfg.kt?"Red":"Blue")+" team wins!"})}}
       else{const al=peers().filter(p=>p.presence.r===G.round&&(p.presence.al===1||p.presence.lv>0));
         if(now-G.t0>4000&&al.length<=1){lastAct=now;emit("end",{m:al[0]?al[0].presence.n+" is the last one standing!":"Nobody survived."})}}
     }else if(G.ph==="over"&&now-G.overAt>6000)startRound();
     if(now-lastSync>1500&&G.round){lastSync=now;sendSync(G.round,G.ph)}
-    if(now-lastPu>7000&&G.ph!=="over"&&pu.length<4){lastPu=now;const p=P[(Math.random()*P.length)|0],k=["ar","sp","sh","tr","ex","ex","ho","ho","ph","iv"][(Math.random()*10)|0];
+    if(now-lastPu>G.cfg.ci*1000&&G.ph!=="over"&&pu.length<G.cfg.ch&&G.cfg.pw.length){lastPu=now;const p=P[(Math.random()*P.length)|0],k=G.cfg.pw[(Math.random()*G.cfg.pw.length)|0];
       emit("pu",{id:"pu"+now,x:Math.round(p.x+20+Math.random()*(p.w-40)),y:p.y-26,k})}
   }
   DT=dt;draw(sc,now);requestAnimationFrame(frame);
@@ -219,7 +229,7 @@ function pl(x,y,a,n,col,ar,you,sh,t,lv,vx,gr,inv,pull){
 let GH=1,opens=[];
 function boom(a){burst(a.x,a.y,"#ff9a3d",30);burst(a.x,a.y,"#fff2a0",12);fx.push({x:a.x,y:a.y,e:performance.now()+350,r:90});shk=Math.max(shk,10);
   if(me.al&&G.ph!=="over"){const d=Math.hypot(me.x-a.x,me.y-20-a.y),n=Date.now();
-    if(d<55&&a.o!==mid()&&me.inv<n){if(me.sh>n)me.sh=0;else die({id:a.id+"x",o:a.o})}
+    if(d<55&&me.inv<n){if(me.sh>n)me.sh=0;else die({id:a.id+"x",o:a.o})}
     if(me.al&&d<130){const k=1-d/130;me.vx=(me.x-a.x)/Math.max(d,1)*900*k;me.vy=-200-500*k;me.gr=0;me.lb={p:a.o,t:n}}}}
 function steer(a,h){let best=null,bd=520;const own=pf(a.o),ot=own?own.presence.tm:-1;
   peers().forEach(p=>{if(p.peer===a.o||(p.isMe?!me.al:p.presence.al!==1)||(!p.isMe&&p.presence.iv===1)||(G.mode==="team"&&p.presence.tm===ot))return;
@@ -262,7 +272,7 @@ function draw(sc,now){
   for(let i=0;i<14;i++){const x=(i*113)%1600+Math.sin(now/900+i)*30,y=250+(i*61)%520+Math.cos(now/700+i*2)*20;cx.fillStyle="rgba(220,255,140,"+(.4+.4*Math.sin(now/300+i))+")";cx.beginPath();cx.arc(x,y,2.2,0,6.283);cx.fill()}
   pu.forEach(u=>chest(u.x,u.y+26,now,0));opens=opens.filter(o=>o.e>performance.now());opens.forEach(o=>chest(o.x,o.y+26,now,1-(o.e-performance.now())/800));
   ground.forEach(g=>{cx.shadowColor="#ffd54a";cx.shadowBlur=10;arrow(g.x,g.y,.3,26,"#ffd54a")});cx.shadowBlur=0;
-  arrows.forEach(a=>{const c={ex:"#ff9a3d",ho:"#ff7ad9",ph:"#b48cff"}[a.md]||"#fff";cx.globalAlpha=a.md==="ph"?.65:1;cx.strokeStyle=a.md?c:"rgba(255,255,255,.3)";cx.lineWidth=a.md?3:2;cx.beginPath();cx.moveTo(a.x-a.vx*.05,a.y-a.vy*.05);cx.lineTo(a.x,a.y);cx.stroke();arrow(a.x,a.y,Math.atan2(a.vy,a.vx),32,c);cx.globalAlpha=1;if(a.md==="ex"&&Math.random()<.5)burst(a.x,a.y,"#ffb347",1)});
+  arrows.forEach(a=>{const c={ex:"#ff9a3d",ho:"#ff7ad9",ph:"#b48cff",bn:"#7ee787"}[a.md]||"#fff";cx.globalAlpha=a.md==="ph"?.65:1;cx.strokeStyle=a.md?c:"rgba(255,255,255,.3)";cx.lineWidth=a.md?3:2;cx.beginPath();cx.moveTo(a.x-a.vx*.05,a.y-a.vy*.05);cx.lineTo(a.x,a.y);cx.stroke();arrow(a.x,a.y,Math.atan2(a.vy,a.vx),32,c);cx.globalAlpha=1;if(a.md==="ex"&&Math.random()<.5)burst(a.x,a.y,"#ffb347",1)});
   fx=fx.filter(f=>f.e>performance.now());fx.forEach(f=>{cx.strokeStyle="#fff";cx.lineWidth=5;cx.globalAlpha=Math.min(1,(f.e-performance.now())/200);cx.beginPath();cx.arc(f.x,f.y,f.r?f.r*(1.1-cx.globalAlpha*.6):34+(1-cx.globalAlpha)*20,0,6.283);cx.stroke();cx.globalAlpha=1});
   if(ch&&me.al){const c=chg(now),v=350+550*c;let x=me.x+Math.cos(me.a)*20,y=me.y-26+Math.sin(me.a)*20,vx=Math.cos(me.a)*v,vy=Math.sin(me.a)*v;
     for(let i=0;i<110;i++){vy+=350*.015;x+=vx*.015;y+=vy*.015;if(x<0||x>W||y>H)break;let hit=0;for(const p of P)if(x>p.x&&x<p.x+p.w&&y>p.y&&y<p.y+(p.t||16)){hit=1;break}
@@ -270,7 +280,7 @@ function draw(sc,now){
       if(hit){cx.strokeStyle="#ff6b6b";cx.lineWidth=3;cx.beginPath();cx.arc(x,y,9,0,6.283);cx.stroke();break}}
     cx.fillStyle="#0008";cx.fillRect(me.x-22,me.y-104,44,8);cx.fillStyle=c>=1?"#ff6b6b":"#ffd54a";cx.fillRect(me.x-20,me.y-102,40*c,4)}
   const lms=G.mode==="lms",col=(tm,id)=>G.mode==="team"?(tm?"#3b8cff":"#ff4d4d"):"hsl("+hue(id)+" 75% 55%)";
-  list.forEach(p=>{GH=p.iv?.1:1;pl(p.x,p.y,p.a,p.n,col(p.tm,p.id),p.ar,false,p.sh,now,lms?p.lv:0,p.vx,p.gr,false,0)});GH=1;
+  list.forEach(p=>{if(p.iv)return;GH=1;pl(p.x,p.y,p.a,p.n,col(p.tm,p.id),p.ar,false,p.sh,now,lms?p.lv:0,p.vx,p.gr,false,0)});GH=1;
   if(me.al){GH=me.iv>now&&me.rev<now?.35:1;pl(me.x,me.y,me.a,me.n,col(me.tm,mid()),me.ar,true,me.sh>now,now,lms?me.lv:0,me.vx,me.gr,me.inv>now,chg(now));GH=1}
   for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.l-=DT;if(p.l<=0){parts.splice(i,1);continue}p.vy+=500*DT;p.x+=p.vx*DT;p.y+=p.vy*DT;cx.globalAlpha=p.l/p.m;cx.fillStyle=p.c;cx.beginPath();cx.arc(p.x,p.y,p.r,0,6.283);cx.fill()}cx.globalAlpha=1;
   const sw=stormW();
@@ -282,15 +292,16 @@ function draw(sc,now){
   const sh=(s,x,y,sz,c)=>{cx.font="bold "+sz+"px Georgia";cx.lineWidth=4;cx.strokeStyle="#000a";cx.strokeText(s,x,y);cx.fillStyle=c||"#fff";cx.fillText(s,x,y)};
   const pill=(s,x,y,sz,c)=>{cx.font="bold "+sz+"px Georgia";const tw=cx.measureText(s).width;cx.fillStyle="rgba(8,10,28,.6)";cx.beginPath();cx.roundRect(x-tw/2-14,y-sz-3,tw+28,sz+14,(sz+14)/2);cx.fill();cx.fillStyle=c||"#fff";cx.fillText(s,x,y)};
   const top=Math.max(34,(parseFloat(getComputedStyle(document.documentElement).paddingTop)||0)+28);
-  if(!lms)pill("Red "+G.k[0]+"   first to 20   "+G.k[1]+" Blue",w/2,top,18);
+  if(!lms)pill("Red "+G.k[0]+"   first to "+G.cfg.kt+"   "+G.k[1]+" Blue",w/2,top,18);
   else{const t=(now-G.t0)/1000,n=peers().filter(p=>p.presence.r===G.round&&(p.presence.al===1||p.presence.lv>0)).length;
     pill("Alive: "+n+(G.ph==="play"?(t<15?"   Storm in "+Math.ceil(15-t)+"s":"   Storm closing"):""),w/2,top,18,sw?"#e2c4ff":"#fff");
-    for(let i=0;i<3;i++)heart(26+i*30,top-8,11,i<me.lv?"#ff4d6d":"rgba(255,255,255,.25)")}
+    for(let i=0;i<Math.max(G.cfg.lv,me.lv);i++)heart(26+i*30,top-8,11,i<me.lv?"#ff4d6d":"rgba(255,255,255,.25)")}
   let y=top+30;feed=feed.filter(f=>f.e>performance.now());cx.textAlign="left";feed.forEach(f=>{sh(f.t,10,y,14);y+=18});cx.textAlign="center";
   for(let i=0;i<6;i++)arrow(w/2+(i-2.5)*30,h-34,-1.2,24,i<me.ar?"#ffd54a":"#ffffff40");
-  const sc2=u=>Math.ceil((u-now)/1000)+"s",ef=[me.sp>now?"Speed "+sc2(me.sp):"",me.sh>now?"Shield":"",me.tr>now?"Triple "+sc2(me.tr):"",me.mc>0?PN[me.mode]+" x"+me.mc:"",me.iv>now?"Invisible "+sc2(me.iv):""].filter(Boolean).join("   ");
+  const sc2=u=>Math.ceil((u-now)/1000)+"s",ef=[me.sp>now?"Speed "+sc2(me.sp):"",me.sh>now?"Shield":"",me.tr>now?"Triple "+sc2(me.tr):"",me.jp>now?"Super jump "+sc2(me.jp):"",me.rf>now?"Rapid fire "+sc2(me.rf):"",me.mg>now?"Magnet "+sc2(me.mg):"",me.bb>now?"Mega bash "+sc2(me.bb):"",me.iv>now?"Invisible "+sc2(me.iv):""].filter(Boolean).join("   "),ks=Object.keys(me.ax).filter(k=>me.ax[k]>0),sel=me.ax[me.mode]>0?me.mode:ks[0];
+  if(ks.length)pill(ks.map(k=>(k===sel?"➤ ":"")+PN[k]+" x"+me.ax[k]).join("   ")+(ks.length>1?"   (Q or tap here to switch)":""),w/2,h-96,15,"#ffd9a0");
   if(ef)pill(ef,w/2,h-64,15,"#ffe08a");
-  let msg="";if(G.ph==="wait")msg="Waiting for another player…  Room: "+code;else if(G.ph==="over")msg=G.msg;
+  let msg="";if(G.ph==="wait")msg="Waiting for players…  Party code: "+code;else if(G.ph==="over")msg=G.msg;
   else if(!me.al)msg=(G.mode==="team"||me.lv>0)?"Respawning…":"You’re out. Spectating until the next round.";
   if(msg)pill(msg,w/2,h/2-60,22);
   if(me.st>0)sh("Get back inside the storm edge!",w/2,h/2+60,18,"#ffb3d1");
@@ -300,18 +311,22 @@ function draw(sc,now){
 function size(){dpr=Math.min(2,devicePixelRatio||1);cv.width=innerWidth*dpr;cv.height=innerHeight*dpr}
 addEventListener("resize",size);size();
 addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT")return;const k=e.key.toLowerCase();
-  if(!e.repeat){if(k==="w"||k==="arrowup"||k===" ")jr=1;if(k==="f"||k==="shift")bash()}
+  if(!e.repeat){if(k==="w"||k==="arrowup"||k===" ")jr=1;if(k==="f"||k==="shift")bash();if(k==="q")cycle()}
   keys[k]=1;if(k===" "||k.startsWith("arrow"))e.preventDefault()});
 addEventListener("keyup",e=>{keys[e.key.toLowerCase()]=0});
 cv.addEventListener("contextmenu",e=>e.preventDefault());
 cv.addEventListener("pointermove",e=>{if(e.pointerType==="mouse")mouse=[e.clientX,e.clientY];else if(sticks[e.pointerId]){sticks[e.pointerId].x=e.clientX;sticks[e.pointerId].y=e.clientY}});
 cv.addEventListener("pointerdown",e=>{if(e.pointerType==="mouse"){mouse=[e.clientX,e.clientY];if(e.button===2)bash();else startCharge();return}
-  sticks[e.pointerId]={l:e.clientX<innerWidth/2,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY};if(e.clientX>=innerWidth/2)startCharge();try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+  if(e.clientY>innerHeight-130&&Math.abs(e.clientX-innerWidth/2)<170){cycle();return}sticks[e.pointerId]={l:e.clientX<innerWidth/2,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY};if(e.clientX>=innerWidth/2)startCharge();try{cv.setPointerCapture(e.pointerId)}catch(_){}});
 const up=e=>{const s=sticks[e.pointerId];if(!s)return;if(!s.l){const dx=s.x-s.x0,dy=s.y-s.y0;if(Math.hypot(dx,dy)>10){me.a=Math.atan2(dy,dx);release()}else{ch=0;bash()}}delete sticks[e.pointerId]};
 cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
 addEventListener("pointerup",e=>{if(e.pointerType==="mouse"&&e.button===0)release()});
 R=Net;requestAnimationFrame(frame);
-$("go").onclick=start;
-$("mpb").onclick=()=>emit("setmode",{m:G.mode,map:(G.map+1)%MAPS.length});
-$("mb").onclick=()=>emit("setmode",{m:G.mode==="lms"?"team":"lms"});
+$("hb").onclick=()=>start("host");$("jb").onclick=()=>start("join");$("sb").onclick=()=>start("solo");if(location.hash.length>1)$("rc").value=decodeURIComponent(location.hash.slice(1)).slice(0,6);
+
+$("mb").onclick=openSet;$("st").onclick=()=>{try{navigator.clipboard.writeText(code);note("Party code copied")}catch(e){}};
+function openSet(){const L=isHost(),c=G.cfg,d=L?"":"disabled",num=(id,lab,v,a,b)=>`<label>${lab}<input id="${id}" type="number" min="${a}" max="${b}" value="${v}" ${d}></label>`;
+  $("set").innerHTML=`<div class="card" style="max-height:88vh;overflow:auto"><h1 style="font-size:24px">${L?"Party settings":"Party settings (leader only)"}</h1><label>Mode<select id="s_m" ${d}><option value="lms">Last man standing</option><option value="team">Teams</option></select></label><label>Map<select id="s_p" ${d}>${MAPS.map((m,i)=>`<option value="${i}">${m.name}</option>`).join("")}</select></label>`+num("s_ch","Max chests at once",c.ch,0,10)+num("s_ci","Seconds between chests",c.ci,3,20)+num("s_lv","Lives (last man standing)",c.lv,1,5)+num("s_ar","Starting arrows",c.ar,1,6)+num("s_kt","Kills to win (teams)",c.kt,5,50)+`<label><input id="s_st" type="checkbox" ${c.st?"checked":""} ${d}> Closing storm</label><b>Power-ups in chests</b>`+KINDS.map(k=>`<label><input type="checkbox" class="pw" value="${k}" ${c.pw.includes(k)?"checked":""} ${d}> ${PN[k]}</label>`).join("")+(L?`<button class="p" id="s_ok">Apply and restart round</button>`:"")+`<button id="s_x">Close</button></div>`;
+  $("s_m").value=G.mode;$("s_p").value=G.map;$("set").hidden=false;$("s_x").onclick=()=>{$("set").hidden=true};
+  if(L)$("s_ok").onclick=()=>{emit("setmode",{m:$("s_m").value,map:+$("s_p").value,cfg:{pw:[...document.querySelectorAll(".pw")].filter(e=>e.checked).map(e=>e.value),ch:$("s_ch").value,ci:$("s_ci").value,lv:$("s_lv").value,ar:$("s_ar").value,kt:$("s_kt").value,st:$("s_st").checked?1:0}});$("set").hidden=true}}
 </script></body></html>
